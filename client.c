@@ -65,6 +65,10 @@ void recv_msg_handler() {
                 flag = 2;
                 break;
             }
+            else if (strcmp(message, "Servidor lleno.") == 0) { // Si el mensaje es bye, se termina el thread
+                flag = 3;
+                break;
+            }
             printf("> %s", message);
             fflush(stdout);
         } 
@@ -106,15 +110,15 @@ int main(int argc, char **argv){
 
     /* Conectar al servidor */
     int err = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
     if (err == -1) {
 		printf("[Cliente]: ERROR conexión\n");
 		return EXIT_FAILURE;
 	}
 
+
 	/* Enviar nombre a servidor*/
 	send(sockfd, name, 20, 0);
-
-	printf("* Bienvenido al chat, %s *\n",name);
 
     /* Crear hilo para enviar mensaje */
     pthread_t send_msg_thread;
@@ -137,6 +141,10 @@ int main(int argc, char **argv){
         }
         else if (flag == 2) {
 			printf("\nBye desde el server\n");
+            break;
+        }
+        else if (flag == 3) {
+			printf("\nServidor lleno. Vuelva mas tarde.\n");
             break;
         }
 	}

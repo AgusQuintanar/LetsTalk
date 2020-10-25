@@ -37,7 +37,6 @@ void str_overwrite_stdout() {
 
 /* Quitar saltos de línea de un arreglo de caracteres*/
 void str_trim_lf (char* arr, int length) {
-    // printf("%d", length);
     for (int i = 0; i < length; i++) { // trim \n
         if (arr[i] == '\n') {
             arr[i] = '\0';
@@ -120,7 +119,6 @@ void send_message(char *s, int uid){
 void catch_ctrl_c_and_exit(int sig) {
     send_message("Bye desde el server",-1);
     flag = 1;
-    // queue_flush();
     kill(0, SIGKILL);
 }
 
@@ -140,9 +138,13 @@ void *handle_client(void *arg){
 	} 
     else {
 		strcpy(cli->name, name);
-        // str_trim_lf(name, strlen(name));
 		sprintf(buff_out, "%s conectado\n", name);
 		printf("> %s", buff_out);
+        char msgBienvenida[50];
+
+        sprintf(msgBienvenida, "Bievenido al server, %s \n", name);
+
+        write(cli->sockfd, msgBienvenida, strlen(msgBienvenida));
 		send_message(buff_out, cli->uid);
 	}
 
@@ -241,7 +243,8 @@ int main(int argc, char **argv){
 		connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen); // Aceptar la conexión
 
 		/* Verificar número máximo de clientes */
-		if((cli_count + 1) == MAX_CLIENTS){
+		if((cli_count + 1) > MAX_CLIENTS){
+            write(connfd, "Servidor lleno.", strlen("Servidor lleno."));
 			printf("[SERVER]: Límite de clientes alcanzado. Rechazado: ");
 			print_client_addr(cli_addr);
 			printf(":%d\n", cli_addr.sin_port);
