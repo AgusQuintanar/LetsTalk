@@ -77,13 +77,12 @@ void queue_remove(int uid){
 }
 
 /* Quitar clientes del arreglo de activos */
-void queue_flush(int uid){
+void queue_flush(){
 	pthread_mutex_lock(&clients_mutex);
 
 	for(int i=0; i < MAX_CLIENTS; ++i){
 		if(clients[i]){
 			clients[i] = NULL;
-			break;
 		}
 	}
 
@@ -121,7 +120,8 @@ void send_message(char *s, int uid){
 void catch_ctrl_c_and_exit(int sig) {
     send_message("Bye desde el server",-1);
     flag = 1;
-    signal(sig, SIG_IGN);
+    // queue_flush();
+    kill(0, SIGKILL);
 }
 
 /* Manejar la comunicación con el cliente */
@@ -142,7 +142,7 @@ void *handle_client(void *arg){
 		strcpy(cli->name, name);
         // str_trim_lf(name, strlen(name));
 		sprintf(buff_out, "%s conectado\n", name);
-		printf("%s", buff_out);
+		printf("> %s", buff_out);
 		send_message(buff_out, cli->uid);
 	}
 
@@ -159,12 +159,12 @@ void *handle_client(void *arg){
 				send_message(buff_out, cli->uid);
 
 				str_trim_lf(buff_out, strlen(buff_out));
-				printf("%s -> %s\n", buff_out, cli->name);
+				printf("> %s \n", buff_out);
 			}
 		} 
         else if (receive == 0 || strcmp(buff_out, "bye") == 0){ // Verificar si el mensaje es bye
 			sprintf(buff_out, "%s ha abandonado el chat.\n", cli->name);
-			printf("%s", buff_out);
+			printf("> %s", buff_out);
 			send_message(buff_out, cli->uid);
 			leave_flag = 1;
 		} 
@@ -212,7 +212,8 @@ int main(int argc, char **argv){
 
     /* Atrapar señal para terminar proceso */
 	//signal(SIGPIPE, catch_ctrl_c_and_exit);
-    signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, catch_ctrl_c_and_exit);
+
 
     /* Verificar entrada del socket */
 	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char*)&option, sizeof(option)) < 0){
@@ -261,9 +262,9 @@ int main(int argc, char **argv){
 		/* Reduccion de uso de CPU */
 		sleep(1);
 
-		// if(flag){
-		// 	break;
-        // }
+		if(flag){
+			break;
+        }
     }
 
     return EXIT_SUCCESS; 

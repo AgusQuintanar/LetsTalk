@@ -16,12 +16,6 @@ volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[20];
 
-/* Sobreescribir salida estándar */
-void str_overwrite_stdout() {
-  printf("%s", "> ");
-  fflush(stdout);
-}
-
 /* Quitar saltos de línea de un arreglo de caracteres*/
 void str_trim_lf (char* arr, int length) {
     for (int i = 0; i < length; i++) { // trim \n
@@ -43,7 +37,7 @@ void send_msg_handler() {
 	char buffer[LENGTH + 20] = {}; // Inicializar el buffer con el tamaño del nombre + mensaje 
 
     while(1) {
-  	    str_overwrite_stdout();
+  	    fflush(stdout);
         fgets(message, LENGTH, stdin);
         str_trim_lf(message, LENGTH);
 
@@ -51,7 +45,7 @@ void send_msg_handler() {
 			break;
         } 
         else {
-            sprintf(buffer, "%s> %s\n", name, message);
+            sprintf(buffer, "%s: %s\n", name, message);
             send(sockfd, buffer, strlen(buffer), 0);
         }
         
@@ -67,8 +61,12 @@ void recv_msg_handler() {
     while (1) {
 		int receive = recv(sockfd, message, LENGTH, 0);
         if (receive > 0) {
-            printf("%s", message);
-            str_overwrite_stdout();
+            if (strcmp(message, "Bye desde el server") == 0) { // Si el mensaje es bye, se termina el thread
+                flag = 2;
+                break;
+            }
+            printf("> %s", message);
+            fflush(stdout);
         } 
         else if (receive == 0) { // Si no se recibe nada, no se imprime
 			break;
@@ -133,9 +131,13 @@ int main(int argc, char **argv){
 	}
 
     while (1){
-		if(flag){
-			printf("\nBye\n");
+		if(flag == 1){
+			printf("\nSesion finalizada.\n");
 			break;
+        }
+        else if (flag == 2) {
+			printf("\nBye desde el server\n");
+            break;
         }
 	}
 
