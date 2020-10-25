@@ -94,7 +94,7 @@ int main(int argc, char **argv){
 
     /* Validar longitu del nombre */
     if (strlen(name) > 20 || strlen(name) < 2){
-		printf("Nombre tiene que tener entre 2 32 caracteres.\n");
+		printf("Nombre tiene que tener entre 2 20 caracteres.\n");
 		return EXIT_FAILURE;
 	}
 
@@ -116,7 +116,7 @@ int main(int argc, char **argv){
 	/* Enviar nombre a servidor*/
 	send(sockfd, name, 20, 0);
 
-	printf("*BIENVENIDO AL CHAT, %s*\n",name);
+	printf("* Bienvenido al chat, %s *\n",name);
 
     /* Crear hilo para enviar mensaje */
     pthread_t send_msg_thread;

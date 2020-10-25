@@ -11,8 +11,9 @@
 #include <signal.h>
 
 #define MAX_CLIENTS 5 // Número máximo de clientes
-#define BUFFER_SZ 2048 // Tamaño del buffer
+#define BUFFER_SZ 250 // Tamaño del buffer
 
+volatile sig_atomic_t flag = 0;
 static _Atomic unsigned int cli_count = 0; // Contador de clientes activos (el tipo _Atomic previene data races)
 static int uid = 10;
 
@@ -21,7 +22,7 @@ typedef struct{
 	struct sockaddr_in address;
 	int sockfd;
 	int uid;
-	char name[32];
+	char name[20];
 } client_t;
 
 client_t *clients[MAX_CLIENTS]; // Lista enlazada de clientes
@@ -75,6 +76,20 @@ void queue_remove(int uid){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
+/* Quitar clientes del arreglo de activos */
+void queue_flush(int uid){
+	pthread_mutex_lock(&clients_mutex);
+
+	for(int i=0; i < MAX_CLIENTS; ++i){
+		if(clients[i]){
+			clients[i] = NULL;
+			break;
+		}
+	}
+
+	pthread_mutex_unlock(&clients_mutex);
+}
+
 void print_client_addr(struct sockaddr_in addr){
     printf(
         "%d.%d.%d.%d",
@@ -103,17 +118,23 @@ void send_message(char *s, int uid){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
+void catch_ctrl_c_and_exit(int sig) {
+    send_message("Bye desde el server",-1);
+    flag = 1;
+    signal(sig, SIG_IGN);
+}
+
 /* Manejar la comunicación con el cliente */
 void *handle_client(void *arg){
 	char buff_out[BUFFER_SZ]; // Buffer que recibirá un nombre
-	char name[32];
+	char name[20];
 	int leave_flag = 0;
 
 	cli_count++;
 	client_t *cli = (client_t *)arg;
 
 	// Nombre del cliente 
-	if (recv(cli->sockfd, name, 32, 0) <= 0 || strlen(name) <  2 || strlen(name) >= 32-1){
+	if (recv(cli->sockfd, name, 20, 0) <= 0 || strlen(name) <  2 || strlen(name) >= 20-1){
 		printf("Nombre faltante.\n");
 		leave_flag = 1;
 	} 
@@ -190,7 +211,8 @@ int main(int argc, char **argv){
     serv_addr.sin_port = htons(port); // Asociar puerto a socket
 
     /* Atrapar señal para terminar proceso */
-	signal(SIGPIPE, SIG_IGN);
+	//signal(SIGPIPE, catch_ctrl_c_and_exit);
+    signal(SIGPIPE, SIG_IGN);
 
     /* Verificar entrada del socket */
 	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char*)&option, sizeof(option)) < 0){
@@ -210,10 +232,10 @@ int main(int argc, char **argv){
         return EXIT_FAILURE;
 	}
 
-    printf("=== BIENVENIDO AL CHAT ===\n");
+    printf("* Servidor inicializado *\n");
 
     /* Inicio del chatroom */
-    while(1){
+    while(1) { 
 		socklen_t clilen = sizeof(cli_addr);
 		connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen); // Aceptar la conexión
 
@@ -238,6 +260,10 @@ int main(int argc, char **argv){
 
 		/* Reduccion de uso de CPU */
 		sleep(1);
+
+		// if(flag){
+		// 	break;
+        // }
     }
 
     return EXIT_SUCCESS; 
