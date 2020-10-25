@@ -9,15 +9,15 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define LENGTH 250
+#define BUFFER_SZ 250
 
 // Variables globales
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
-char name[20];
+char nombre[20];
 
-/* Quitar saltos de línea de un arreglo de caracteres*/
-void str_trim_lf (char* arr, int length) {
+// Quitar saltos de línea de un arreglo de caracteres
+void quitar_salto_linea(char* arr, int length) {
     for (int i = 0; i < length; i++) { // trim \n
         if (arr[i] == '\n') {
             arr[i] = '\0';
@@ -27,55 +27,55 @@ void str_trim_lf (char* arr, int length) {
 }
 
 /* Atrapar Ctrl+C y salir*/
-void catch_ctrl_c_and_exit(int sig) {
+void salir_ctrl_c(int sig) {
     flag = 1;
 }
 
 /* Función de thread para enviar */
-void send_msg_handler() {
-    char message[LENGTH] = {};
-	char buffer[LENGTH + 20] = {}; // Inicializar el buffer con el tamaño del nombre + mensaje 
+void enviar_mensaje() {
+    char mensaje[BUFFER_SZ] = {};
+	char buffer[BUFFER_SZ + 20] = {}; // Inicializar el buffer con el tamaño del nombre + mensaje 
 
     while(1) {
   	    fflush(stdout);
-        fgets(message, LENGTH, stdin);
-        str_trim_lf(message, LENGTH);
+        fgets(mensaje, BUFFER_SZ, stdin);
+        quitar_salto_linea(mensaje, BUFFER_SZ);
 
-        if (strcmp(message, "bye") == 0) { // Si el mensaje es bye, se termina el thread
+        if (strcmp(mensaje, "bye") == 0) { // Si el mensaje es bye, se termina el thread
 			break;
         } 
         else {
-            sprintf(buffer, "%s: %s\n", name, message);
+            sprintf(buffer, "%s: %s\n", nombre, mensaje);
             send(sockfd, buffer, strlen(buffer), 0);
         }
         
-		bzero(message, LENGTH); // Vaciar mensaje 
-        bzero(buffer, LENGTH + 20); // Vaciar buffer
+		bzero(mensaje, BUFFER_SZ); // Vaciar mensaje 
+        bzero(buffer, BUFFER_SZ + 20); // Vaciar buffer
     }
-  catch_ctrl_c_and_exit(2);
+  salir_ctrl_c(2);
 }
 
 /* Función de thread para recibir */
-void recv_msg_handler() {
-	char message[LENGTH] = {};
+void recibir_mensaje() {
+	char mensaje[BUFFER_SZ] = {};
     while (1) {
-		int receive = recv(sockfd, message, LENGTH, 0);
+		int receive = recv(sockfd, mensaje, BUFFER_SZ, 0);
         if (receive > 0) {
-            if (strcmp(message, "Bye desde el server") == 0) { // Si el mensaje es bye, se termina el thread
+            if (strcmp(mensaje, "Bye desde el server.") == 0) { // Si el mensaje es bye, se termina el thread
                 flag = 2;
                 break;
             }
-            else if (strcmp(message, "Servidor lleno.") == 0) { // Si el mensaje es bye, se termina el thread
+            else if (strcmp(mensaje, "Servidor lleno.") == 0) { // Si el mensaje es bye, se termina el thread
                 flag = 3;
                 break;
             }
-            printf("> %s", message);
+            printf("> %s", mensaje);
             fflush(stdout);
         } 
         else if (receive == 0) { // Si no se recibe nada, no se imprime
 			break;
         } 
-		memset(message, 0, sizeof(message));
+		memset(mensaje, 0, sizeof(mensaje));
     }
 }
 
@@ -88,14 +88,14 @@ int main(int argc, char **argv){
 	char *ip = "127.0.0.1"; // IP de host
 	int port = atoi(argv[1]); // Puerto
 
-	signal(SIGINT, catch_ctrl_c_and_exit); // Asignar función de salida a Ctrl+C
+	signal(SIGINT, salir_ctrl_c); // Asignar función de salida a Ctrl+C
 
 	printf("Ingresa tu nombre: ");
-    fgets(name, 20, stdin);
-    str_trim_lf(name, strlen(name)); // Quitar salto de línea a nombre
+    fgets(nombre, 20, stdin);
+    quitar_salto_linea(nombre, strlen(nombre)); // Quitar salto de línea a nombre
 
     /* Validar longitu del nombre */
-    if (strlen(name) > 20 || strlen(name) < 2){
+    if (strlen(nombre) > 20 || strlen(nombre) < 2){
 		printf("Nombre tiene que tener entre 2 20 caracteres.\n");
 		return EXIT_FAILURE;
 	}
@@ -112,39 +112,38 @@ int main(int argc, char **argv){
     int err = connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
     if (err == -1) {
-		printf("[Cliente]: ERROR conexión\n");
+		printf("[Cliente]: ERROR conexión.\n");
 		return EXIT_FAILURE;
-	}
-
+    }
 
 	/* Enviar nombre a servidor*/
-	send(sockfd, name, 20, 0);
+	send(sockfd, nombre, 20, 0);
 
     /* Crear hilo para enviar mensaje */
     pthread_t send_msg_thread;
-    if (pthread_create(&send_msg_thread, NULL, (void *) send_msg_handler, NULL) != 0){
-		printf("[Cliente]: ERROR hilo\n");
+    if (pthread_create(&send_msg_thread, NULL, (void *) enviar_mensaje, NULL) != 0){
+		printf("[Cliente]: ERROR hilo.\n");
         return EXIT_FAILURE;
 	}
 
     /* Crear hilo para recibir mensaje */
     pthread_t recv_msg_thread;
-    if (pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0){
-		printf("[Cliente]: ERROR hilo\n");
+    if (pthread_create(&recv_msg_thread, NULL, (void *) recibir_mensaje, NULL) != 0){
+		printf("[Cliente]: ERROR hilo.\n");
 		return EXIT_FAILURE;
 	}
 
     while (1){
 		if(flag == 1){
-			printf("\nSesion finalizada.\n");
+			printf("\nSesión finalizada.\n");
 			break;
         }
         else if (flag == 2) {
-			printf("\nBye desde el server\n");
+			printf("\nBye desde el server.\n");
             break;
         }
         else if (flag == 3) {
-			printf("\nServidor lleno. Vuelva mas tarde.\n");
+			printf("\nServidor lleno. Vuelva más tarde.\n");
             break;
         }
 	}

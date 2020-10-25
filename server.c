@@ -10,24 +10,24 @@
 #include <sys/types.h>
 #include <signal.h>
 
-#define MAX_CLIENTS 5 // Número máximo de clientes
+#define NUM_CLIENTES_MAX 5 // Número máximo de clientes
 #define BUFFER_SZ 250 // Tamaño del buffer
 
 volatile sig_atomic_t flag = 0;
-static _Atomic unsigned int cli_count = 0; // Contador de clientes activos (el tipo _Atomic previene data races)
-static int uid = 10;
+static _Atomic unsigned int num_clientes = 0; // Contador de clientes activos (el tipo _Atomic previene data races)
+static int id = 10;
 
 /* Estructura de cliente */
 typedef struct{
-	struct sockaddr_in address;
+	struct sockaddr_in direccion_ip;
 	int sockfd;
-	int uid;
-	char name[20];
-} client_t;
+	int id;
+	char nombre[20];
+} cliente;
 
-client_t *clients[MAX_CLIENTS]; // Lista enlazada de clientes
+cliente *clientes[NUM_CLIENTES_MAX]; // Lista enlazada de clientes
 
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t clientes_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Sobreescribir salida estándar */
 void str_overwrite_stdout() {
@@ -36,7 +36,7 @@ void str_overwrite_stdout() {
 }
 
 /* Quitar saltos de línea de un arreglo de caracteres*/
-void str_trim_lf (char* arr, int length) {
+void quitar_salto_linea(char* arr, int length) {
     for (int i = 0; i < length; i++) { // trim \n
         if (arr[i] == '\n') {
             arr[i] = '\0';
@@ -46,49 +46,36 @@ void str_trim_lf (char* arr, int length) {
 }
 
 /* Añadir cliente nuevo a la lista de activos */
-void queue_add(client_t *cl){
-	pthread_mutex_lock(&clients_mutex); // Proteger la lista temporalmente
+void agregar_cliente(cliente *cl){
+	pthread_mutex_lock(&clientes_mutex); // Proteger la lista temporalmente
 
-	for(int i=0; i < MAX_CLIENTS; ++i){
-		if(!clients[i]){
-			clients[i] = cl;
+	for(int i=0; i < NUM_CLIENTES_MAX; ++i){
+		if(!clientes[i]){
+			clientes[i] = cl;
 			break;
 		}
 	}
 
-	pthread_mutex_unlock(&clients_mutex); // Desbloquear la lista
+	pthread_mutex_unlock(&clientes_mutex); // Desbloquear la lista
 }
 
 /* Quitar clientes del arreglo de activos */
-void queue_remove(int uid){
-	pthread_mutex_lock(&clients_mutex);
+void eliminar_cliente(int id){
+	pthread_mutex_lock(&clientes_mutex);
 
-	for(int i=0; i < MAX_CLIENTS; ++i){
-		if(clients[i]){
-			if(clients[i]->uid == uid){
-				clients[i] = NULL;
+	for(int i=0; i < NUM_CLIENTES_MAX; ++i){
+		if(clientes[i]){
+			if(clientes[i]->id == id){
+				clientes[i] = NULL;
 				break;
 			}
 		}
 	}
 
-	pthread_mutex_unlock(&clients_mutex);
+	pthread_mutex_unlock(&clientes_mutex);
 }
 
-/* Quitar clientes del arreglo de activos */
-void queue_flush(){
-	pthread_mutex_lock(&clients_mutex);
-
-	for(int i=0; i < MAX_CLIENTS; ++i){
-		if(clients[i]){
-			clients[i] = NULL;
-		}
-	}
-
-	pthread_mutex_unlock(&clients_mutex);
-}
-
-void print_client_addr(struct sockaddr_in addr){
+void imprimir_ip(struct sockaddr_in addr){
     printf(
         "%d.%d.%d.%d",
         addr.sin_addr.s_addr & 0xff,
@@ -99,90 +86,90 @@ void print_client_addr(struct sockaddr_in addr){
 }
 
 /* Enviar mensaje a todos los clientes excepto al remitente */
-void send_message(char *s, int uid){
-	pthread_mutex_lock(&clients_mutex);
+void mandar_mensaje(char *s, int id){
+	pthread_mutex_lock(&clientes_mutex);
 
-	for (int i=0; i<MAX_CLIENTS; ++i){
-		if (clients[i]){
-			if (clients[i]->uid != uid){
-				if (write(clients[i]->sockfd, s, strlen(s)) < 0){
-					perror("[SERVER]: ERROR al mandar mensajes");
+	for (int i=0; i<NUM_CLIENTES_MAX; ++i){
+		if (clientes[i]){
+			if (clientes[i]->id != id){
+				if (write(clientes[i]->sockfd, s, strlen(s)) < 0){
+					perror("[SERVER]: ERROR al mandar mensajes.");
 					break;
 				}
 			}
 		}
 	}
 
-	pthread_mutex_unlock(&clients_mutex);
+	pthread_mutex_unlock(&clientes_mutex);
 }
 
-void catch_ctrl_c_and_exit(int sig) {
-    send_message("Bye desde el server",-1);
+void salir_ctrl_c(int sig) {
+    mandar_mensaje("Bye desde el server.",-1);
     flag = 1;
     kill(0, SIGKILL);
 }
 
 /* Manejar la comunicación con el cliente */
 void *handle_client(void *arg){
-	char buff_out[BUFFER_SZ]; // Buffer que recibirá un nombre
-	char name[20];
-	int leave_flag = 0;
+	char buffer[BUFFER_SZ]; // Buffer que recibirá un nombre
+	char nombre[20];
+	int flag_terminar = 0;
 
-	cli_count++;
-	client_t *cli = (client_t *)arg;
+	num_clientes++;
+	cliente *cli = (cliente *)arg;
 
 	// Nombre del cliente 
-	if (recv(cli->sockfd, name, 20, 0) <= 0 || strlen(name) <  2 || strlen(name) >= 20-1){
+	if (recv(cli->sockfd, nombre, 20, 0) <= 0 || strlen(nombre) <  2 || strlen(nombre) >= 20-1){
 		printf("Nombre faltante.\n");
-		leave_flag = 1;
+		flag_terminar = 1;
 	} 
     else {
-		strcpy(cli->name, name);
-		sprintf(buff_out, "%s conectado\n", name);
-		printf("> %s", buff_out);
+		strcpy(cli->nombre, nombre);
+		sprintf(buffer, "%s se ha conectado.\n", nombre);
+		printf("> %s", buffer);
         char msgBienvenida[50];
 
-        sprintf(msgBienvenida, "Bievenido al server, %s \n", name);
+        sprintf(msgBienvenida, "Bievenido al server, %s.\n", nombre);
 
         write(cli->sockfd, msgBienvenida, strlen(msgBienvenida));
-		send_message(buff_out, cli->uid);
+		mandar_mensaje(buffer, cli->id);
 	}
 
-	bzero(buff_out, BUFFER_SZ); // Vaciar el buffer
+	bzero(buffer, BUFFER_SZ); // Vaciar el buffer
 
     while(1){
-		if (leave_flag) {
+		if (flag_terminar) {
 			break;
 		}
 
-		int receive = recv(cli->sockfd, buff_out, BUFFER_SZ, 0);
-		if (receive > 0){ // Mandar un mensaje a los clientes
-			if(strlen(buff_out) > 0){
-				send_message(buff_out, cli->uid);
+		int recibido = recv(cli->sockfd, buffer, BUFFER_SZ, 0);
+		if (recibido > 0){ // Mandar un mensaje a los clientes
+			if(strlen(buffer) > 0){
+				mandar_mensaje(buffer, cli->id);
 
-				str_trim_lf(buff_out, strlen(buff_out));
-				printf("> %s \n", buff_out);
+				quitar_salto_linea(buffer, strlen(buffer));
+				printf("> %s \n", buffer);
 			}
 		} 
-        else if (receive == 0 || strcmp(buff_out, "bye") == 0){ // Verificar si el mensaje es bye
-			sprintf(buff_out, "%s ha abandonado el chat.\n", cli->name);
-			printf("> %s", buff_out);
-			send_message(buff_out, cli->uid);
-			leave_flag = 1;
+        else if (recibido == 0 || strcmp(buffer, "bye") == 0){ // Verificar si el mensaje es bye
+			sprintf(buffer, "%s ha abandonado el chat.\n", cli->nombre);
+			printf("> %s", buffer);
+			mandar_mensaje(buffer, cli->id);
+			flag_terminar = 1;
 		} 
         else {
 			printf("[SERVER]: ERROR -1\n");
-			leave_flag = 1;
+			flag_terminar = 1;
 		}
 
-		bzero(buff_out, BUFFER_SZ);
+		bzero(buffer, BUFFER_SZ);
 	}
 
     /* Eliminar cliente de lista, terminar thread y limpiar */
 	close(cli->sockfd);
-    queue_remove(cli->uid);
+    eliminar_cliente(cli->id);
     free(cli);
-    cli_count--;
+    num_clientes--;
     pthread_detach(pthread_self());
 
 	return NULL;
@@ -193,14 +180,14 @@ int main(int argc, char **argv){
     
     /* Verificar de los parámetros de entrada */
 	if(argc != 2){
-		printf("Uso: %s <port>\n", argv[0]);
+		printf("Uso: %s <PUERTO>\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
 	char *ip = "127.0.0.1"; // IP de host
-	int port = atoi(argv[1]); // Puerto
+	int puerto = atoi(argv[1]); // Puerto
 
-    int option = 1;
+    int opcion = 1;
 	int listenfd = 0, connfd = 0;
     struct sockaddr_in serv_addr;
     struct sockaddr_in cli_addr;
@@ -210,28 +197,27 @@ int main(int argc, char **argv){
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = inet_addr(ip); // Asociar IP a socket
-    serv_addr.sin_port = htons(port); // Asociar puerto a socket
+    serv_addr.sin_port = htons(puerto); // Asociar puerto a socket
 
     /* Atrapar señal para terminar proceso */
-	//signal(SIGPIPE, catch_ctrl_c_and_exit);
-    signal(SIGINT, catch_ctrl_c_and_exit);
+    signal(SIGINT, salir_ctrl_c);
 
 
     /* Verificar entrada del socket */
-	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char*)&option, sizeof(option)) < 0){
-		perror("[SERVER]: ERROR en setsockopt");
+	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char*)&opcion, sizeof(opcion)) < 0){
+		perror("[SERVER]: ERROR en setsockopt.");
         return EXIT_FAILURE;
 	}
 
     /* Verificar Bind */
     if(bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("[SERVER]: ERROR en binding");
+        perror("[SERVER]: ERROR en binding.");
         return EXIT_FAILURE;
     }
 
     /* Verificar Listen */
     if (listen(listenfd, 10) < 0) {
-        perror("[SERVER]: ERROR al escuchar");
+        perror("[SERVER]: ERROR al escuchar.");
         return EXIT_FAILURE;
 	}
 
@@ -243,23 +229,23 @@ int main(int argc, char **argv){
 		connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen); // Aceptar la conexión
 
 		/* Verificar número máximo de clientes */
-		if((cli_count + 1) > MAX_CLIENTS){
+		if((num_clientes + 1) > NUM_CLIENTES_MAX){
             write(connfd, "Servidor lleno.", strlen("Servidor lleno."));
 			printf("[SERVER]: Límite de clientes alcanzado. Rechazado: ");
-			print_client_addr(cli_addr);
+			imprimir_ip(cli_addr);
 			printf(":%d\n", cli_addr.sin_port);
 			close(connfd);
 			continue;
 		}
 
         /* Configuración de cliente */
-		client_t *cli = (client_t *)malloc(sizeof(client_t));
-		cli->address = cli_addr;
+		cliente *cli = (cliente *)malloc(sizeof(cliente));
+		cli->direccion_ip = cli_addr;
 		cli->sockfd = connfd;
-		cli->uid = uid++;
+		cli->id = id++;
 
-		/* Agregar cliente al arreglo y hacer fork al hilo*/
-		queue_add(cli);
+		/* Agregar cliente a la lista y crear hilo*/
+		agregar_cliente(cli);
 		pthread_create(&tid, NULL, &handle_client, (void*)cli);
 
 		/* Reduccion de uso de CPU */
