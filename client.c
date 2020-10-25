@@ -1,3 +1,5 @@
+// El siguiente codigo se realizo con la guia del siguiente tutorial: https://www.youtube.com/watch?v=fNerEo6Lstw&feature=youtu.be
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

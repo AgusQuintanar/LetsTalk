@@ -1,3 +1,5 @@
+// El siguiente codigo se realizo con la guia del siguiente tutorial: https://www.youtube.com/watch?v=fNerEo6Lstw&feature=youtu.be
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -134,6 +136,7 @@ void *handle_client(void *arg){
         write(cli->sockfd, msgBienvenida, strlen(msgBienvenida));
 		mandar_mensaje(buffer, cli->id);
 	}
+
 
 	bzero(buffer, BUFFER_SZ); // Vaciar el buffer
 
